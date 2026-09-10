@@ -1,0 +1,15 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+*.user
+*.log
+*.err
+*.wav
+
+# Scratch screenshots in repo root (assets/ PNGs stay tracked)
+/*.png
+
+# Local scratch scripts (measure/preview/screenshot helpers)
+/*.ps1

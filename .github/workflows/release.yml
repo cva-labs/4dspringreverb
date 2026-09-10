@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build
+
+      - name: Configure (macOS, universal arm64 + x86_64)
+        if: runner.os == 'macOS'
+        run: cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stage | Out-Null
+          $v = ${env:GITHUB_REF_NAME} -replace '^v',''
+          Compress-Archive -Path 'build/Spring4DReverb_artefacts/Release/VST3/4D Spring Reverb.vst3' -DestinationPath "stage/4DSpringReverb-$v-Windows-VST3.zip"
+          Compress-Archive -Path 'build/Spring4DReverb_artefacts/Release/Standalone/4D Spring Reverb.exe' -DestinationPath "stage/4DSpringReverb-$v-Windows-Standalone.zip"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p stage
+          V="${GITHUB_REF_NAME#v}"
+          ditto -c -k --sequesterRsrc --keepParent "build/Spring4DReverb_artefacts/Release/VST3/4D Spring Reverb.vst3" "stage/4DSpringReverb-${V}-macOS-VST3.zip"
+          ditto -c -k --sequesterRsrc --keepParent "build/Spring4DReverb_artefacts/Release/Standalone/4D Spring Reverb.app" "stage/4DSpringReverb-${V}-macOS-Standalone.zip"
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "4D Spring Reverb $GITHUB_REF_NAME" --generate-notes || true
+          for i in $(seq 1 30); do
+            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+            sleep 10
+          done
+          gh release upload "$GITHUB_REF_NAME" stage/*.zip --clobber
